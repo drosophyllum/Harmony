@@ -1,0 +1,82 @@
+import random
+from numpy import * 
+
+
+entities = ["a","b","c"]
+interactions = ["attract","innert","kaboom"]
+types = ["t1","t2","t3"]
+
+
+rules = [["attract","t1" , "t2"],["innert","t1" , "t3"],["kaboom","t2" , "t3"]]
+
+def newRandomRow(typespace):
+	rule = ["","",""]
+	rule[0] = random.choice(interactions)
+	rule[1] = random.choice(typespace)
+	rule[2] = random.choice(typespace)
+	return rule
+
+
+def regrowRule(rules):
+	print("RULES:")
+	print(rules)
+	print("\n")
+	typespace = [] 
+	for rule in rules:
+		typespace.append(rule[1])
+		typespace.append(rule[2])
+	typespace = set(typespace)
+	nextType = list(set(types).difference(typespace))
+	typespace = list(typespace) + ( [] if len(nextType)==0 else [nextType[0]])
+
+	action = random.choice(["c","i","bc" ,"b1","b2","h"])
+	index = random.choice(range(len(rules)))
+	print("action:")
+	print((action,index))
+	print("PermRULES:")
+	print(rules)
+	if   action == "c":
+		random.shuffle(rules)
+		rules = rules[0:index]
+		numberNewRows = random.geometric(0.5) 
+		rules = rules + [newRandomRow(typespace) for x in range(numberNewRows)]
+
+	elif action == "i":
+		rules[index] = newRandomRow(typespace); 
+	elif action == "bc":
+		rules[index][1] = random.choice(typespace)
+		rules[index][2] = random.choice(typespace)
+	elif action == "b1":
+		rules[index][1] = random.choice(typespace)
+	elif action == "b2":
+		rules[index][2] = random.choice(typespace)
+	elif action == "h":
+		rules[index][0] = random.choice(interactions)
+	print("NewRULES:")
+	print(rules)
+	return rules
+
+#regrowRule(rules)
+
+
+
+def prediction(rules,types,entities):
+	interactions = []
+	typedict = dict(types)
+	for e1 in entities:
+		for e2 in entities:
+			if e1 < e2:
+				t1 = typedict[e1]
+				t2 = typedict[e2]
+				pred=[]
+				for r in rules:
+					if r[1:] == [t1,t2] or r[1:] == [t2,t1]:
+						pred.append(r[0])
+				pred = list(set(pred))
+				interactions = interactions + [[p,e1,e2] for p in pred] 
+	return interactions
+	
+rr = [["attract" , "magnet" ,"magnet"] , ["attract","magnet" ,"metal"] , ["innert" , "metal" , "plastic"],["innert","magnet","plastic"]]
+tt = [["a" ,"magnet"] ,["b", "metal"], [ "c" , "plastic"]]
+ee = ["a" , "b" , "c"]
+print(prediction(rr,tt,ee));

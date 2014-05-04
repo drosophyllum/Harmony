@@ -44,7 +44,6 @@ def regrowRule(interactions, types,rules):
 		rules[index][0] = random.choice(interactions)
 	return rules
 
-#regrowRule(rules)
 def listify(x):
 	if type(x) == type(dict()):
 		return [[z,x[z]] for z in x.keys()]
@@ -93,10 +92,6 @@ def gibbsv2(obs,rules, types, entities , oldAssignment, numtime = 1):
 			probs = [prob/z for prob in probs] 
 			index = numpy.random.choice(range(len(proposals)),p=probs)
 			x = proposals[index]
-		#trail.append(x)
-		#trailLikelihoods.append(likelihood(obs,rules,types, entities,x))
-	
-	#return trail[trailLikelihoods.index(max(trailLikelihoods))]
 	return mx
 
 
@@ -109,7 +104,7 @@ def prior(rules):
 	return (0.5**(len(rules)))*(1.0/((float(len(tipos)))**(2*len(rules))))
 
 def likelihood(obs,rules,types,entities, assignment ):
-	b = 7
+	b = 10
 	interactions = []
 	correct = 0
 	assignment = dict(assignment)
@@ -117,11 +112,9 @@ def likelihood(obs,rules,types,entities, assignment ):
 		for e2 in entities:
 			if e1 < e2 and e1 in assignment.keys()  and e2 in assignment.keys():
 				pred = prediction(rules,assignment,e1,e2)
-				#print (pred,e1,e2)
 				if len(pred) == 1 and ( [pred[0],e1,e2] in obs or [pred[0],e2,e1] in obs) :
 					correct =  correct +1			
 	qt = float(len(obs) - correct)
-	#print fracwrong
 	return numpy.exp(-1*b*qt)
 
 
@@ -142,26 +135,8 @@ def prediction(rules,typedict,e1,e2):
 
 
 
-entities = ["a","b","c","d"]
-interactions = ["attract","innert"]
-types = ["mag","met","plas"]
-obs = [["attract", "a" ,"b" ] , ["innert", "a", "c"],["innert" , "b" , "c"],["attract", "a" ,"d"], ["innert" , "b" , "d"],["innert" , "d","c"]] 
-
-
-rules = [["attract","mag","met"],["innert","met","plas"],["innert","mag","plas"], ["innert","met","met"]]
-#print(rules)
-#print(obs)
-
-#assignment = [(e,random.choice(types)) for e in entities] 
-assignment =  [["a" , "plas"],["b","plas"],["c" ,"plas"],["d","plas"]] 
-#print(assignment)
-#print(likelihood(obs,rules,types,entities,assignment))
-
-assignment =  [["a" , "mag"],["b","met"],["c" ,"plas"],["d","met"]] 
-#print(assignment)
-#print(likelihood(obs,rules,types,entities,assignment))
-
 def detox(rules,assignments):
+#	print assignments
 	typespace = list(set([t for (o,t) in listify(assignments)]))
 	relevant = filter(lambda r: r[1] in typespace and r[2] in typespace, rules)
 	indices = range(len(relevant))
@@ -178,8 +153,6 @@ def clean(rules,assignments):
 
 
 
-rules = [["attract","mag","met"],["innert","met","plas"],["innert","mag","plas"], ["innert","met","met"]]
-assignment = [(e,random.choice(types)) for e in entities] 
 def randomAssignments(entities,types,rules):
 	typespace = set(types)
 	nextType = list(set(types).difference(typespace))
@@ -195,17 +168,38 @@ def rand(interactions,entities,types,rules,assignments):
 def erd(prand,interactions,entities,types,error,rules,assignment):
 	assignment = dict(assignment)
 	def errordriven():
-		skip = 0.2
+		(ei ,ee1 ,ee2) = error
+		n = min(numpy.random.geometric(0.1),2)
+		q = [ee1,ee2]
+		random.shuffle(q)
+		toReassign = q[0:n]
+		typespace = [] 
+		for rule in rules:
+			typespace.append(rule[1])
+			typespace.append(rule[2])
+		typespace = set(typespace)
+		nextType = list(set(types).difference(typespace))
+		typespace = list(typespace) + ( [] if len(nextType)==0 else nextType[0:max(2,len(nextType))])
+		#print typespace
+		for e in toReassign:
+			assignment[e] = random.choice(typespace)
+		
+		newRule = [ei,"",""]
+		newRule[1] = assignment[ee1]
+		newRule[2] = assignment[ee2]
+		return (detox([newRule] + rules,assignment), assignment)
+
+		skip = 0.5
 		(ei ,ee1 ,ee2) = error
 		random.shuffle(rules)
 		fixes = filter(lambda r : ei == r[0] , rules)
-		if fixes and random.random() > skip:
+		if len(fixes) > 0 and random.random() > skip:
 			(fi,ft1,ft2) = fixes[0]
 			assignment[ee1] = ft1
 			assignment[ee2] = ft2
 			return (rules,assignment)
 		newRule = [ei,"",""]
-		n = numpy.random.geometric(0.5) -1 
+		n = numpy.random.geometric(0.1) # -1 
 		if n == 0:
 			newRule[1] = assignment[ee1]
 			newRule[2] = assignment[ee2]
@@ -220,29 +214,31 @@ def erd(prand,interactions,entities,types,error,rules,assignment):
 		if n == 1:
 			if random.random() > 0.5: 
 				newRule[1] = random.choice(typespace)
+				assignment[ee1] = newRule[1]
 				newRule[2] = assignment[ee2]
 			else:   
 				newRule[1] = assignment[ee1]
 				newRule[2] = random.choice(typespace)
+				assignment[ee2] = newRule[2]
 			return (detox([newRule] + rules,assignment), assignment)
 		newRule[1] = random.choice(typespace)
+		typespace = [] 
+		for rule in rules:
+			typespace.append(rule[1])
+			typespace.append(rule[2])
+		typespace = set(typespace)
+		nextType = list(set(types+[newRule[1]]).difference(typespace)) ## think hard about this
+		typespace = list(typespace) + ( [] if len(nextType)==0 else [nextType[0]])
+		
 		newRule[2] = random.choice(typespace)
+		assignment[ee1] = newRule[1]
+		assignment[ee2] = newRule[2]
 		return (detox([newRule] + rules,assignment) , assignment)	
 	if prand< random.random():
 		return errordriven()
 	else:
 		return rand(interactions,entities,types,rules,assignment)
 		
-
-
-
-x = regrowRule(interactions, types,[])
-assignment = [(e,random.choice(types)) for e in entities] 
-a  = prior(x)*likelihood(obs,x,types,entities,assignment)
-i=0 
-
-
-
 def getError(obs,x,assignment):
 	random.shuffle(obs)
 	for ob in obs:
@@ -253,48 +249,61 @@ def getError(obs,x,assignment):
 	print("FATAL ERROR: no erroneous observations left")
 	exit()
 
+class Problem:
+	def __init__(self,entities,interactions,obs):
+		self.entities = entities
+		self.interactions = interactions
+		self.obs = obs
+		self.types = ["t" + str(i) for i in range(len(entities))]
+	def run(self):
+		x = regrowRule(self.interactions, self.types,[])
+		assignment = [(e,random.choice(self.types)) for e in self.entities] 
+		a  = prior(x)*likelihood(self.obs,x,self.types,self.entities,assignment)
+		i=0 
 
-while(likelihood(obs,x,types,entities,assignment) < 1):
-	prand = 0
-	print(obs)
-	print(x)
-	print(assignment)
-	error = getError(obs,x,assignment)
-	print(error)
-	i = i +1 
-	(xp,assignmentp) = erd(prand,interactions,entities,types,error,x,assignment)
-	print(xp)
-	print(assignmentp)
-	print
-	ap = prior(xp)*likelihood(obs,xp,types,entities,assignmentp)
-	if random.random() < ap/a :
-		x = xp
-		assignment = assignmentp
-		a = ap
-print i
-exit();
-x = regrowRule(interactions, types,[])
-assignment = [(e,random.choice(types)) for e in entities] 
-a  = prior(x)*likelihood(obs,x,types,entities,assignment)
-i=0 
-while(likelihood(obs,x,types,entities,assignment) < 1):
-	i = i +1 
-	xp = regrowRule(interactions, types,x)
-	assignmentp= gibbsv2(obs,xp,types, entities,assignment,50)
-	ap = prior(xp)*likelihood(obs,xp,types,entities,assignmentp)
-	if random.random() < ap/a :
-		x = xp
-		assignment = assignmentp
-		a = ap
 
-print "\n\n\nACCEPT!\n"
-print obs
-print "\n"
-print x
-print assignment
-print a
-print i
-	
+
+		while(likelihood(self.obs,x,self.types,self.entities,assignment) < 1):
+			prand = 0
+			error = getError(self.obs,x,assignment)
+			i = i +1 
+			(xp,assignmentp) = erd(prand,self.interactions,self.entities,self.types,error,x,assignment)
+			xp = clean(xp,assignmentp)
+			ap = prior(xp)*likelihood(self.obs,xp,self.types,self.entities,assignmentp)
+			print x, assignment
+			print error
+			print xp,assignmentp
+			print
+
+			if random.random() < ap/a :
+				x = xp
+				assignment = assignmentp
+				a = ap
+		print i
+	def run2(self):
+		x = regrowRule(self.interactions, self.types,[])
+		assignment = [(e,random.choice(self.types)) for e in self.entities] 
+		a  = prior(x)*likelihood(self.obs,x,self.types,self.entities,assignment)
+		i=0 
+		while(likelihood(self.obs,x,self.types,self.entities,assignment) < 1):
+			i = i +1 
+			xp = regrowRule(self.interactions, self.types,x)
+			assignmentp= gibbsv2(self.obs,xp,self.types, self.entities,assignment,50)
+			xp = clean(xp,assignment)
+			ap = prior(xp)*likelihood(self.obs,xp,self.types,self.entities,assignmentp)
+			if random.random() < ap/a :
+				x = xp
+				assignment = assignmentp
+				a = ap
+
+		print "\n\n\nACCEPT!\n"
+		print self.obs
+		print "\n"
+		print x
+		print self.assignment
+		print a
+		print i
+			
 
 
 

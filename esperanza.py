@@ -28,7 +28,7 @@ def regrowRule(interactions, types,rules):
 	if   action == "c":
 		random.shuffle(rules)
 		rules = rules[0:index]
-		numberNewRows = numpy.random.geometric(0.5) 
+		numberNewRows = numpy.random.geometric(0.1) 
 		rules = rules + [newRandomRow(interactions,typespace) for x in range(numberNewRows)]
 
 	elif action == "i":
@@ -56,18 +56,20 @@ def gibbsv1(obs,rules, types, entities):
 	for newAssignment in prods:
 		x1 = listify(x)
 		if newAssignment in x1:  x1.remove(newAssignment)
-		print(newAssignment)
-		print x1
+#		print(newAssignment)
+#		print x1
 		x1 = dict(x1)
-		print(x1)
+#		print(x1)
 		x2 = dict(listify(x) + [newAssignment])
-		print x2
+#		print x2
 		a1 = likelihood(obs,rules,types, entities,x1)
 		a2 = likelihood(obs,rules,types, entities,x2)
 		x = x1 if random.random() > float(a1)/float(a2) else x2
 	return x
 
 def gibbsv2(obs,rules, types, entities , oldAssignment, numtime = 1):
+	#print(obs)
+	#print(rules,oldAssignment)
 	x = dict(oldAssignment)
 	entities = list(entities)
 	trail = []
@@ -92,6 +94,8 @@ def gibbsv2(obs,rules, types, entities , oldAssignment, numtime = 1):
 			probs = [prob/z for prob in probs] 
 			index = numpy.random.choice(range(len(proposals)),p=probs)
 			x = proposals[index]
+	#print(rules,mx)
+	#print mxa
 	return mx
 
 
@@ -101,21 +105,23 @@ def prior(rules):
 		tipos.append(r[1])
 		tipos.append(r[2])
 	tipos = list(set(tipos))
-	return (0.5**(len(rules)))*(1.0/((float(len(tipos)))**(2*len(rules))))
+	return (0.5**(len(rules)))*((1.0/float(len(tipos)+1))**(2*len(rules)))
 
 def likelihood(obs,rules,types,entities, assignment ):
-	b = 10
+	b = 30
 	interactions = []
-	correct = 0
+	mistakes = 0
 	assignment = dict(assignment)
 	for e1 in entities:
 		for e2 in entities:
-			if e1 < e2 and e1 in assignment.keys()  and e2 in assignment.keys():
-				pred = prediction(rules,assignment,e1,e2)
-				if len(pred) == 1 and ( [pred[0],e1,e2] in obs or [pred[0],e2,e1] in obs) :
-					correct =  correct +1			
-	qt = float(len(obs) - correct)
-	return numpy.exp(-1*b*qt)
+			if not (e1 == e2):
+				if e1 in assignment.keys()  and e2 in assignment.keys():
+					pred = prediction(rules,assignment,e1,e2)
+					if not (len(pred) == 1 and ( [pred[0],e1,e2] in obs or [pred[0],e2,e1] in obs) ):
+						mistakes  = mistakes + 1
+				else: 
+					mistakes  = mistakes + 1
+	return numpy.exp(-1*b*mistakes)
 
 
 def prediction(rules,typedict,e1,e2):
@@ -142,7 +148,7 @@ def detox(rules,assignments):
 	indices = range(len(relevant))
 	contradict= lambda r1,r2 : (r1[1],r1[2]) in [(r2[1],r2[2]),(r2[2],r2[1])]
 	i = 0
-	while( i < len(relevant)-1):
+	while( i < len(relevant)):
 		r = relevant[i]
 		relevant = relevant[0:i+1] + filter(lambda rn : not contradict(r,rn),relevant[i+1:])
 		i=i+1
@@ -188,52 +194,6 @@ def erd(prand,interactions,entities,types,error,rules,assignment):
 		newRule[1] = assignment[ee1]
 		newRule[2] = assignment[ee2]
 		return (detox([newRule] + rules,assignment), assignment)
-
-		skip = 0.5
-		(ei ,ee1 ,ee2) = error
-		random.shuffle(rules)
-		fixes = filter(lambda r : ei == r[0] , rules)
-		if len(fixes) > 0 and random.random() > skip:
-			(fi,ft1,ft2) = fixes[0]
-			assignment[ee1] = ft1
-			assignment[ee2] = ft2
-			return (rules,assignment)
-		newRule = [ei,"",""]
-		n = numpy.random.geometric(0.1) # -1 
-		if n == 0:
-			newRule[1] = assignment[ee1]
-			newRule[2] = assignment[ee2]
-			return (detox([newRule] + rules,assignment), assignment)
-		typespace = [] 
-		for rule in rules:
-			typespace.append(rule[1])
-			typespace.append(rule[2])
-		typespace = set(typespace)
-		nextType = list(set(types).difference(typespace))
-		typespace = list(typespace) + ( [] if len(nextType)==0 else [nextType[0]])
-		if n == 1:
-			if random.random() > 0.5: 
-				newRule[1] = random.choice(typespace)
-				assignment[ee1] = newRule[1]
-				newRule[2] = assignment[ee2]
-			else:   
-				newRule[1] = assignment[ee1]
-				newRule[2] = random.choice(typespace)
-				assignment[ee2] = newRule[2]
-			return (detox([newRule] + rules,assignment), assignment)
-		newRule[1] = random.choice(typespace)
-		typespace = [] 
-		for rule in rules:
-			typespace.append(rule[1])
-			typespace.append(rule[2])
-		typespace = set(typespace)
-		nextType = list(set(types+[newRule[1]]).difference(typespace)) ## think hard about this
-		typespace = list(typespace) + ( [] if len(nextType)==0 else [nextType[0]])
-		
-		newRule[2] = random.choice(typespace)
-		assignment[ee1] = newRule[1]
-		assignment[ee2] = newRule[2]
-		return (detox([newRule] + rules,assignment) , assignment)	
 	if prand< random.random():
 		return errordriven()
 	else:
@@ -255,7 +215,9 @@ class Problem:
 		self.interactions = interactions
 		self.obs = obs
 		self.types = ["t" + str(i) for i in range(len(entities))]
-	def run(self):
+	def run(self,prand,neval=None):
+		if neval == None:
+			neval = len(self.obs)
 		x = regrowRule(self.interactions, self.types,[])
 		assignment = [(e,random.choice(self.types)) for e in self.entities] 
 		a  = prior(x)*likelihood(self.obs,x,self.types,self.entities,assignment)
@@ -264,34 +226,43 @@ class Problem:
 
 
 		while(likelihood(self.obs,x,self.types,self.entities,assignment) < 1):
-			prand = 0
 			error = getError(self.obs,x,assignment)
 			i = i +1 
 			(xp,assignmentp) = erd(prand,self.interactions,self.entities,self.types,error,x,assignment)
 			xp = clean(xp,assignmentp)
-			ap = prior(xp)*likelihood(self.obs,xp,self.types,self.entities,assignmentp)
+			random.shuffle(self.obs)
+			ap = prior(xp)*likelihood([error]+self.obs[0:neval-1],xp,self.types,self.entities,assignmentp)
 			print x, assignment
 			print error
 			print xp,assignmentp
 			print
 
-			if random.random() < ap/a :
+			if True : #random.random() < ap/a :
 				x = xp
 				assignment = assignmentp
 				a = ap
 		print i
-	def run2(self):
+	def run2(self,correct, neval=None ):
+		if neval == None:
+			neval = len(self.obs)
 		x = regrowRule(self.interactions, self.types,[])
 		assignment = [(e,random.choice(self.types)) for e in self.entities] 
 		a  = prior(x)*likelihood(self.obs,x,self.types,self.entities,assignment)
 		i=0 
-		while(likelihood(self.obs,x,self.types,self.entities,assignment) < 1):
+		ac = likelihood(self.obs,correct[0],self.types,self.entities,correct[1])*prior(correct[0])
+		temperature = 1
+		while(likelihood(self.obs,x,self.types,self.entities,assignment) < 1 or len(x) >4):
 			i = i +1 
 			xp = regrowRule(self.interactions, self.types,x)
 			assignmentp= gibbsv2(self.obs,xp,self.types, self.entities,assignment,50)
-			xp = clean(xp,assignment)
-			ap = prior(xp)*likelihood(self.obs,xp,self.types,self.entities,assignmentp)
-			if random.random() < ap/a :
+			xp = clean(xp,assignmentp)
+			#print(xp)
+			#print
+			random.shuffle(self.obs)
+			ap = prior(xp)*likelihood(self.obs[0:neval],xp,self.types,self.entities,assignmentp)
+			if random.random() < (ap/a)**(float(1)/float(temperature)) :
+				print("accept!: " , (a,ap,ac))
+				print(xp,assignmentp)
 				x = xp
 				assignment = assignmentp
 				a = ap
@@ -300,7 +271,7 @@ class Problem:
 		print self.obs
 		print "\n"
 		print x
-		print self.assignment
+		print assignment
 		print a
 		print i
 			
